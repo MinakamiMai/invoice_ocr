@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR 发票识别系统</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+    <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<div id="login-view" class="login-shell">
+    <div class="login-card">
+        <div class="brand-mark">票</div>
+        <h1>OCR 发票识别系统</h1>
+        <p class="muted">上传、识别、查重、验真与人工复核</p>
+        <form id="login-form">
+            <label>用户名<input id="login-username" autocomplete="username" required></label>
+            <label>密码<input id="login-password" type="password" autocomplete="current-password" required></label>
+            <button class="btn primary block" type="submit">登录</button>
+        </form>
+        <div id="login-error" class="form-error"></div>
+        <div class="demo-accounts">
+            <span>演示账号</span>
+            <button type="button" data-account="admin">admin / Admin@123</button>
+            <button type="button" data-account="reviewer">reviewer / Review@123</button>
+            <button type="button" data-account="submitter">submitter / Submit@123</button>
+            <button type="button" data-account="auditor">auditor / Audit@123</button>
+        </div>
+        <p class="tiny muted">首次启动会自动创建演示账号，详见 README。生产环境请修改密码与 JWT 密钥。</p>
+    </div>
+</div>
+
+<div id="app-view" class="app-shell hidden">
+    <aside class="sidebar">
+        <div class="sidebar-brand"><span class="brand-mark small">票</span><div><strong>发票 OCR</strong><small>Invoice Intelligence</small></div></div>
+        <nav id="main-nav">
+            <button class="nav-item active" data-view="upload"><span>↥</span>上传识别</button>
+            <button class="nav-item" data-view="ledger"><span>≡</span>发票台账</button>
+            <button class="nav-item" data-view="review"><span>⚑</span>复核队列</button>
+            <button class="nav-item" data-view="audit"><span>◷</span>审计日志</button>
+            <button class="nav-item" data-view="config"><span>⚙</span>系统配置</button>
+        </nav>
+        <div class="sidebar-foot">
+            <div class="user-block">
+                <div id="user-avatar" class="avatar">U</div>
+                <div><strong id="user-name">-</strong><small id="user-role">-</small></div>
+            </div>
+            <button id="logout-btn" class="btn ghost small block">退出登录</button>
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="topbar">
+            <div>
+                <h1 id="view-title">上传识别</h1>
+                <p id="view-subtitle" class="muted">支持 JPG / PNG / BMP / PDF / OFD，单文件不超过 10MB</p>
+            </div>
+            <div class="topbar-actions" id="top-actions"></div>
+        </header>
+
+        <section id="view-upload" class="view active">
+            <div class="grid upload-grid">
+                <div class="card">
+                    <div class="card-head"><h2>上传发票</h2><span class="badge subtle">异步识别</span></div>
+                    <div id="drop-zone" class="drop-zone">
+                        <input id="file-input" type="file" accept=".jpg,.jpeg,.png,.bmp,.pdf,.ofd" hidden>
+                        <div class="drop-icon">↥</div>
+                        <p><strong>点击或将文件拖到此处</strong></p>
+                        <p class="muted tiny">系统会校验 MIME 与文件头，拒绝伪装文件</p>
+                        <div id="file-name" class="file-name hidden"></div>
+                    </div>
+                    <div class="form-row">
+                        <label>发票类型（可选，留空自动判断）
+                            <select id="upload-type">
+                                <option value="">自动判断</option>
+                                <option value="VAT_SPECIAL">增值税专用发票</option>
+                                <option value="VAT_NORMAL">增值税普通发票</option>
+                                <option value="VAT_E_NORMAL">增值税电子普通发票</option>
+                                <option value="DIGITAL">全电发票（数电票）</option>
+                                <option value="VAT_ROLL">增值税卷票</option>
+                            </select>
+                        </label>
+                        <button id="upload-btn" class="btn primary" disabled>开始识别</button>
+                    </div>
+                    <div id="upload-result" class="result-box hidden"></div>
+                </div>
+                <div class="card hints-card">
+                    <div class="card-head"><h2>识别说明</h2></div>
+                    <ol class="hint-list">
+                        <li>数字版 PDF / OFD 优先抽取文本层，无需外部 OCR 引擎。</li>
+                        <li>图片与扫描件会经过灰度、降噪、二值化、倾斜校正，再调用当前 OCR 引擎。</li>
+                        <li>缺省引擎为 <code>mock</code>（仅联调，不产生文本）；可在系统配置切换为 Tesseract 或百度 OCR。</li>
+                        <li>识别完成后自动查重；低置信度、缺字段、查重命中会进入复核队列。</li>
+                        <li>上传接口只创建任务，识别在后台完成，可通过本页轮询或台账查看。</li>
+                    </ol>
+                    <div class="status-legend">
+                        <span class="badge processing">处理中</span>
+                        <span class="badge completed">已识别</span>
+                        <span class="badge review">待复核</span>
+                        <span class="badge confirmed">已确认</span>
+                        <span class="badge rejected">已拒绝</span>
+                        <span class="badge failed">识别失败</span>
+                        <span class="badge duplicate">重复</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-ledger" class="view">
+            <div class="card filter-card">
+                <form id="ledger-filter" class="filter-grid">
+                    <label>关键字<input name="keyword" placeholder="号码 / 代码 / 购销方"></label>
+                    <label>状态
+                        <select name="status">
+                            <option value="">全部</option>
+                            <option value="PROCESSING">处理中</option>
+                            <option value="COMPLETED">已识别</option>
+                            <option value="NEEDS_REVIEW">待复核</option>
+                            <option value="CONFIRMED">已确认</option>
+                            <option value="REJECTED">已拒绝</option>
+                            <option value="OCR_FAILED">识别失败</option>
+                        </select>
+                    </label>
+                    <label>发票类型
+                        <select name="invoiceType">
+                            <option value="">全部</option>
+                            <option value="VAT_SPECIAL">增值税专用发票</option>
+                            <option value="VAT_NORMAL">增值税普通发票</option>
+                            <option value="VAT_E_NORMAL">增值税电子普通发票</option>
+                            <option value="DIGITAL">全电发票（数电票）</option>
+                            <option value="VAT_ROLL">增值税卷票</option>
+                        </select>
+                    </label>
+                    <label>开票日期从<input name="invoiceDateFrom" type="date"></label>
+                    <label>开票日期至<input name="invoiceDateTo" type="date"></label>
+                    <label>金额下限<input name="amountMin" type="number" step="0.01"></label>
+                    <label>金额上限<input name="amountMax" type="number" step="0.01"></label>
+                    <label>查重
+                        <select name="duplicateFlag">
+                            <option value="">全部</option>
+                            <option value="true">仅重复</option>
+                            <option value="false">仅非重复</option>
+                        </select>
+                    </label>
+                    <div class="filter-actions">
+                        <button class="btn primary" type="submit">查询</button>
+                        <button class="btn ghost" type="button" id="ledger-reset">重置</button>
+                        <button class="btn ghost" type="button" id="ledger-export">导出 CSV</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>发票台账</h2><span id="ledger-count" class="muted tiny"></span></div>
+                <div class="table-wrap"><table id="ledger-table" class="data-table"></table></div>
+                <div class="pager" id="ledger-pager"></div>
+            </div>
+        </section>
+
+        <section id="view-review" class="view">
+            <div class="card filter-card">
+                <form id="review-filter" class="filter-grid compact">
+                    <label>关键字<input name="keyword" placeholder="号码 / 购销方"></label>
+                    <label>发票类型
+                        <select name="invoiceType">
+                            <option value="">全部</option>
+                            <option value="VAT_SPECIAL">增值税专用发票</option>
+                            <option value="VAT_NORMAL">增值税普通发票</option>
+                            <option value="VAT_E_NORMAL">增值税电子普通发票</option>
+                            <option value="DIGITAL">全电发票（数电票）</option>
+                            <option value="VAT_ROLL">增值税卷票</option>
+                        </select>
+                    </label>
+                    <label>查重
+                        <select name="duplicateFlag">
+                            <option value="">全部</option>
+                            <option value="true">仅重复</option>
+                        </select>
+                    </label>
+                    <div class="filter-actions">
+                        <button class="btn primary" type="submit">刷新队列</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>待复核队列</h2><span class="muted tiny">低置信度 / 查重命中 / 验真异常</span></div>
+                <div class="table-wrap"><table id="review-table" class="data-table"></table></div>
+                <div class="pager" id="review-pager"></div>
+            </div>
+        </section>
+
+        <section id="view-audit" class="view">
+            <div class="card filter-card">
+                <form id="audit-filter" class="filter-grid compact">
+                    <label>操作人<input name="username" placeholder="用户名"></label>
+                    <label>操作类型<input name="action" placeholder="UPLOAD / REVIEW"></label>
+                    <label>开始日期<input name="dateFrom" type="date"></label>
+                    <label>结束日期<input name="dateTo" type="date"></label>
+                    <div class="filter-actions"><button class="btn primary" type="submit">查询</button></div>
+                </form>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>审计日志</h2><span class="muted tiny">只读</span></div>
+                <div class="table-wrap"><table id="audit-table" class="data-table"></table></div>
+                <div class="pager" id="audit-pager"></div>
+            </div>
+        </section>
+
+        <section id="view-config" class="view">
+            <div class="grid config-grid">
+                <div class="card">
+                    <div class="card-head"><h2>系统配置</h2><span class="badge subtle">管理员</span></div>
+                    <p class="muted tiny">密钥类配置加密存储，读取时仅显示 ******；留空表示清除。</p>
+                    <div id="config-list" class="config-list"></div>
+                    <div class="form-row end">
+                        <button id="config-save" class="btn primary">保存配置</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-head"><h2>OCR 引擎</h2></div>
+                    <div id="engine-list" class="engine-list"></div>
+                    <div class="notice">
+                        切换引擎后仅影响新上传或重新识别的任务。Tesseract 需安装程序与 chi_sim 语言包；百度 OCR 需配置 API 密钥。
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root" class="toast-root"></div>
+<script src="/assets/app.js"></script>
+</body>
+</html>
