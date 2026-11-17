@@ -34,6 +34,7 @@ public class AppProperties {
     @Data
     public static class Ocr {
         private Tesseract tesseract = new Tesseract();
+        private PaddleOcr paddle = new PaddleOcr();
         private Async async = new Async();
     }
 
@@ -41,6 +42,19 @@ public class AppProperties {
     public static class Tesseract {
         private String datapath = "";
         private String language = "chi_sim+eng";
+    }
+
+    @Data
+    public static class PaddleOcr {
+        private String token = "";
+        private String tokenFile = "./paddleocr-token.txt";
+        private String model = "PaddleOCR-VL-1.6";
+        private String baseUrl = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs";
+        private int pollIntervalSeconds = 3;
+        private int timeoutSeconds = 180;
+        private boolean useDocOrientationClassify = false;
+        private boolean useDocUnwarping = false;
+        private boolean useChartRecognition = false;
     }
 
     @Data

@@ -46,8 +46,10 @@ public class InvoiceParser {
     private static final Pattern BANK_ACCOUNT = Pattern.compile(
             "(?:开户行及账号|开户行及帐号|开户行账号|开户行及帐号|开户行)\\s*[:：]?\\s*([^\\n]{3,200})");
 
+    // OCR engines may render the currency mark as ¥, ￥, Y or an unknown glyph; allow a few
+    // non-digit characters between "合计" and the two amounts.
     private static final Pattern TOTAL_PAIR = Pattern.compile(
-            "合\\s*计\\s*[:：]?\\s*[￥¥]?\\s*([\\d,]+\\.\\d{1,2})\\s*[￥¥]?\\s*([\\d,]+\\.\\d{1,2})");
+            "合\\s*计\\s*[:：]?[^0-9\\n]{0,6}([\\d,]+\\.\\d{1,2})[^0-9\\n]{0,6}([\\d,]+\\.\\d{1,2})");
     private static final Pattern GRAND_TOTAL = Pattern.compile(
             "(?:\\(?小写\\)?|小写)\\s*[:：]?\\s*[￥¥]?\\s*([\\d,]+\\.\\d{1,2})");
     private static final Pattern GRAND_TOTAL_CN = Pattern.compile(

@@ -26,6 +26,15 @@ public class SystemConfigService {
     public static final String OFD_MAX_IMAGES = "ocr.ofd.max-images";
     public static final String BAIDU_API_KEY = "ocr.baidu.api-key";
     public static final String BAIDU_SECRET_KEY = "ocr.baidu.secret-key";
+    public static final String PADDLE_TOKEN = "ocr.paddle.token";
+    public static final String PADDLE_TOKEN_FILE = "ocr.paddle.token-file";
+    public static final String PADDLE_MODEL = "ocr.paddle.model";
+    public static final String PADDLE_BASE_URL = "ocr.paddle.base-url";
+    public static final String PADDLE_POLL_INTERVAL_SECONDS = "ocr.paddle.poll-interval-seconds";
+    public static final String PADDLE_TIMEOUT_SECONDS = "ocr.paddle.timeout-seconds";
+    public static final String PADDLE_ORIENTATION_CLASSIFY = "ocr.paddle.use-doc-orientation-classify";
+    public static final String PADDLE_DOC_UNWARPING = "ocr.paddle.use-doc-unwarping";
+    public static final String PADDLE_CHART_RECOGNITION = "ocr.paddle.use-chart-recognition";
     public static final String PREPROCESS_ENABLED = "preprocess.enabled";
     public static final String PREPROCESS_DESKEW = "preprocess.deskew";
     public static final String PREPROCESS_STAMP = "preprocess.stamp-suppression";
@@ -44,7 +53,7 @@ public class SystemConfigService {
     private static final Map<String, String> DESCRIPTIONS = new LinkedHashMap<>();
 
     static {
-        defaults(OCR_ENGINE, "mock", "当前 OCR 引擎：mock / tesseract / baidu");
+        defaults(OCR_ENGINE, "paddle", "当前 OCR 引擎：paddle / baidu / tesseract / mock");
         defaults(OCR_FALLBACK_ENGINE, "", "商业引擎失败后的降级引擎，可留空");
         defaults(CONFIDENCE_THRESHOLD, "80", "字段置信度阈值（0-100），低于阈值进入复核");
         defaults(PDF_MIN_TEXT_CHARS, "20", "PDF/OFD 文本层少于该字符数时降级为图像 OCR");
@@ -54,6 +63,17 @@ public class SystemConfigService {
         defaults("ocr.tesseract.language", "chi_sim+eng", "Tesseract 语言包，例如 chi_sim+eng");
         defaults(BAIDU_API_KEY, "", "百度 OCR API Key（加密存储）");
         defaults(BAIDU_SECRET_KEY, "", "百度 OCR Secret Key（加密存储）");
+        defaults(PADDLE_TOKEN, "", "PaddleOCR-VL 访问 Token（加密存储）");
+        defaults(PADDLE_TOKEN_FILE, "./paddleocr-token.txt",
+                "本地 Token 文件路径（存在时优先于后台配置；该文件不提交 Git）");
+        defaults(PADDLE_MODEL, "PaddleOCR-VL-1.6", "PaddleOCR-VL 模型名称");
+        defaults(PADDLE_BASE_URL, "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs",
+                "PaddleOCR 任务接口地址");
+        defaults(PADDLE_POLL_INTERVAL_SECONDS, "3", "PaddleOCR 任务轮询间隔（秒）");
+        defaults(PADDLE_TIMEOUT_SECONDS, "180", "PaddleOCR 任务最长等待时间（秒）");
+        defaults(PADDLE_ORIENTATION_CLASSIFY, "false", "PaddleOCR 文档方向分类");
+        defaults(PADDLE_DOC_UNWARPING, "false", "PaddleOCR 文档展平矫正");
+        defaults(PADDLE_CHART_RECOGNITION, "false", "PaddleOCR 图表识别");
         defaults(PREPROCESS_ENABLED, "true", "是否启用图像预处理");
         defaults(PREPROCESS_DESKEW, "true", "是否启用倾斜校正");
         defaults(PREPROCESS_STAMP, "true", "是否弱化红色印章");
@@ -80,7 +100,8 @@ public class SystemConfigService {
     @Transactional
     public void seedDefaults() {
         for (Map.Entry<String, String> entry : DEFAULTS.entrySet()) {
-            if (repository.findById(entry.getKey()).isEmpty()) {
+            SystemConfigEntity existing = repository.findById(entry.getKey()).orElse(null);
+            if (existing == null) {
                 SystemConfigEntity entity = new SystemConfigEntity();
                 entity.setConfigKey(entry.getKey());
                 entity.setConfigValue(entry.getValue());
@@ -89,8 +110,28 @@ public class SystemConfigService {
                 entity.setUpdatedAt(LocalDateTime.now());
                 entity.setUpdatedBy("system");
                 repository.save(entity);
+            } else if (!java.util.Objects.equals(existing.getDescription(), DESCRIPTIONS.get(entry.getKey()))) {
+                // Descriptions are documentation owned by the application, not user data.
+                existing.setDescription(DESCRIPTIONS.get(entry.getKey()));
+                repository.save(existing);
             }
         }
+        upgradeSeededEngineDefault();
+    }
+
+    /**
+     * Older deployments were seeded with the mock engine. Upgrade only the untouched system default
+     * to the real PaddleOCR engine; an explicitly saved engine choice (different updatedBy) is kept.
+     */
+    private void upgradeSeededEngineDefault() {
+        repository.findById(OCR_ENGINE).ifPresent(entity -> {
+            if ("mock".equals(entity.getConfigValue()) && "system".equals(entity.getUpdatedBy())) {
+                entity.setConfigValue("paddle");
+                entity.setUpdatedAt(LocalDateTime.now());
+                entity.setUpdatedBy("system");
+                repository.save(entity);
+            }
+        });
     }
 
     public String get(String key) {
@@ -173,13 +214,13 @@ public class SystemConfigService {
     private void validate(String key, String value) {
         switch (key) {
             case OCR_ENGINE -> {
-                if (!Set.of("mock", "tesseract", "baidu").contains(value)) {
-                    throw new IllegalArgumentException("OCR 引擎只能是 mock / tesseract / baidu");
+                if (!Set.of("paddle", "mock", "tesseract", "baidu").contains(value)) {
+                    throw new IllegalArgumentException("OCR 引擎只能是 paddle / mock / tesseract / baidu");
                 }
             }
             case OCR_FALLBACK_ENGINE -> {
-                if (!value.isBlank() && !Set.of("mock", "tesseract", "baidu").contains(value)) {
-                    throw new IllegalArgumentException("降级 OCR 引擎只能是 mock / tesseract / baidu 或留空");
+                if (!value.isBlank() && !Set.of("paddle", "mock", "tesseract", "baidu").contains(value)) {
+                    throw new IllegalArgumentException("降级 OCR 引擎只能是 paddle / mock / tesseract / baidu 或留空");
                 }
             }
             case VERIFY_TRIGGER -> {
@@ -199,10 +240,21 @@ public class SystemConfigService {
                 }
             }
             case PDF_MIN_TEXT_CHARS, PDF_MAX_PAGES, OFD_MAX_IMAGES, VERIFY_HTTP_TIMEOUT_MS,
-                    VERIFY_HTTP_RETRIES, STORAGE_RETENTION_YEARS, EXPORT_MAX_ROWS -> {
+                    VERIFY_HTTP_RETRIES, STORAGE_RETENTION_YEARS, EXPORT_MAX_ROWS,
+                    PADDLE_POLL_INTERVAL_SECONDS, PADDLE_TIMEOUT_SECONDS -> {
                 int parsed = Integer.parseInt(value);
                 if (parsed < 0 || parsed > 100000) {
                     throw new IllegalArgumentException("数值配置越界：" + key);
+                }
+            }
+            case PADDLE_BASE_URL -> {
+                if (!value.isBlank() && !value.startsWith("http://") && !value.startsWith("https://")) {
+                    throw new IllegalArgumentException("PaddleOCR 接口地址必须以 http:// 或 https:// 开头");
+                }
+            }
+            case PADDLE_MODEL -> {
+                if (value.isBlank()) {
+                    throw new IllegalArgumentException("PaddleOCR 模型名称不能为空");
                 }
             }
             default -> {

@@ -25,9 +25,10 @@ public class OcrEngineService {
                             AppProperties appProperties, ImagePreprocessor imagePreprocessor) {
         clients.stream()
                 .sorted(Comparator.comparingInt(client -> switch (client.name()) {
-                    case "mock" -> 0;
-                    case "tesseract" -> 1;
-                    case "baidu" -> 2;
+                    case "paddle" -> 0;
+                    case "baidu" -> 1;
+                    case "tesseract" -> 2;
+                    case "mock" -> 3;
                     default -> 9;
                 }))
                 .forEach(client -> this.clients.put(client.name(), client));
@@ -37,7 +38,7 @@ public class OcrEngineService {
     }
 
     public String currentEngineName() {
-        return configService.get(SystemConfigService.OCR_ENGINE, "mock");
+        return configService.get(SystemConfigService.OCR_ENGINE, "paddle");
     }
 
     public InvoiceOcrClient currentEngine() {
@@ -111,6 +112,7 @@ public class OcrEngineService {
                             : "tessdata: " + datapath;
                 }
                 case "baidu" -> client.available() ? "密钥已配置" : "未配置百度 API 密钥";
+                case "paddle" -> client.available() ? "Token 已配置" : "未配置 PaddleOCR Token";
                 default -> "开发用引擎，不产生文本";
             };
             return new AdminDtos.EngineInfo(client.name(), client.displayName(), client.available(), detail);

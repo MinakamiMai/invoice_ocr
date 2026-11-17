@@ -8,3 +8,6 @@ data/
 Thumbs.db
 .env
 samples/sample-invoice.pdf
+
+# Local API token, never commit
+paddleocr-token.txt

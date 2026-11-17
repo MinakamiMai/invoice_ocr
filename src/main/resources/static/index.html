@@ -89,7 +89,7 @@
                     <ol class="hint-list">
                         <li>数字版 PDF / OFD 优先抽取文本层，无需外部 OCR 引擎。</li>
                         <li>图片与扫描件会经过灰度、降噪、二值化、倾斜校正，再调用当前 OCR 引擎。</li>
-                        <li>缺省引擎为 <code>mock</code>（仅联调，不产生文本）；可在系统配置切换为 Tesseract 或百度 OCR。</li>
+                        <li>缺省引擎为 <code>paddle</code>（PaddleOCR-VL 在线 API）；可在系统配置切换为百度 OCR、Tesseract 或 mock。</li>
                         <li>识别完成后自动查重；低置信度、缺字段、查重命中会进入复核队列。</li>
                         <li>上传接口只创建任务，识别在后台完成，可通过本页轮询或台账查看。</li>
                     </ol>

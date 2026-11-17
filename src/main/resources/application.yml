@@ -51,6 +51,17 @@ app:
     tesseract:
       datapath: ${TESSERACT_DATAPATH:}
       language: ${TESSERACT_LANGUAGE:chi_sim+eng}
+    paddle:
+      # The local token file is gitignored and takes precedence when it exists.
+      token-file: ${PADDLEOCR_TOKEN_FILE:./paddleocr-token.txt}
+      token: ${PADDLEOCR_TOKEN:}
+      model: ${PADDLEOCR_MODEL:PaddleOCR-VL-1.6}
+      base-url: ${PADDLEOCR_BASE_URL:https://paddleocr.aistudio-app.com/api/v2/ocr/jobs}
+      poll-interval-seconds: ${PADDLEOCR_POLL_INTERVAL_SECONDS:3}
+      timeout-seconds: ${PADDLEOCR_TIMEOUT_SECONDS:180}
+      use-doc-orientation-classify: ${PADDLEOCR_ORIENTATION:false}
+      use-doc-unwarping: ${PADDLEOCR_UNWARPING:false}
+      use-chart-recognition: ${PADDLEOCR_CHART:false}
     async:
       core-pool-size: 4
       max-pool-size: 8

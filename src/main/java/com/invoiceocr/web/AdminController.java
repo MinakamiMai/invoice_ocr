@@ -32,7 +32,7 @@ public class AdminController {
         return new AdminDtos.ConfigListResponse(
                 configService.listMasked(),
                 engineService.listEngines(),
-                configService.get(SystemConfigService.OCR_ENGINE, "mock"),
+                configService.get(SystemConfigService.OCR_ENGINE, "paddle"),
                 configService.get(SystemConfigService.VERIFY_CHANNEL, "mock"));
     }
 
